@@ -81,6 +81,17 @@ jobs:
                 '        if relay_server.is_empty() {\n'
                 f'            relay_server = "{relay_server}".to_owned();\n'
                 '        }')
+          # lejianwen/rustdesk-api#92: hbbs never answers the key exchange, so every
+          # connection waits READ_TIMEOUT (18s) and secure_tcp_required fails outright.
+          # Short-circuit both to keep the API account login usable.
+          patch("src/common.rs",
+                'async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> ResultType<()> {',
+                'async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> ResultType<()> {\n'
+                '    return Ok(());')
+          patch("src/common.rs",
+                'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {',
+                'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {\n'
+                '    return Ok(());')
           PY
 
       - name: Verify hardcoded settings
@@ -90,6 +101,8 @@ jobs:
           grep -F 'pub const RENDEZVOUS_SERVERS: &[&str] = &["dj.wizrole.cn:8443"];' libs/hbb_common/src/config.rs
           grep -F 'pub const RS_PUB_KEY: &str = "NkNCTItxvr6MysSjBs0tPRoqkzsWOrhOUkacYWCQl1o=";' libs/hbb_common/src/config.rs
           grep -F 'relay_server = "dj.wizrole.cn:8444".to_owned();' src/rendezvous_mediator.rs
+          grep -F 'async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
+          grep -F 'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
 
       - name: Restore bridge files
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
