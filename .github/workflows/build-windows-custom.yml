@@ -92,6 +92,10 @@ jobs:
                 'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {',
                 'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {\n'
                 '    return Ok(());')
+          # Branding: the About page title in the Chinese UI.
+          patch("src/lang/cn.rs",
+                '("About RustDesk", "关于 RustDesk"),',
+                '("About RustDesk", "关于 RustDesk 维思陆定制版"),')
           PY
 
       - name: Verify hardcoded settings
@@ -102,6 +106,7 @@ jobs:
           grep -F 'pub const RS_PUB_KEY: &str = "NkNCTItxvr6MysSjBs0tPRoqkzsWOrhOUkacYWCQl1o=";' libs/hbb_common/src/config.rs
           grep -F 'relay_server = "dj.wizrole.cn:8444".to_owned();' src/rendezvous_mediator.rs
           grep -F 'async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
+          grep -F '("About RustDesk", "关于 RustDesk 维思陆定制版"),' src/lang/cn.rs
           grep -F 'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
 
       - name: Restore bridge files
