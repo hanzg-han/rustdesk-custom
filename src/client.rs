@@ -1822,6 +1822,7 @@ impl Client {
             );
             msg_out.set_request_relay(RequestRelay {
                 id: peer.to_owned(),
+                from_id: Config::get_id(),
                 token: token.to_owned(),
                 uuid: uuid.clone(),
                 relay_server: relay_server.clone(),
