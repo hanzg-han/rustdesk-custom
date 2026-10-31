@@ -952,6 +952,7 @@ impl Client {
         };
         msg_out.set_punch_hole_request(PunchHoleRequest {
             id: peer.to_owned(),
+            from_id: Config::get_id(),
             token: token.to_owned(),
             nat_type: nat_type.into(),
             licence_key: key.to_owned(),
