@@ -664,13 +664,22 @@ jobs:
         shell: bash
         run: |
           pushd flutter
+          # --no-codesign stops before packaging: it leaves build/ios/archive/Runner.xcarchive
           flutter build ipa --release --no-codesign
           popd
-          ls -l flutter/build/ios/ipa/
+          app=$(find flutter/build/ios/archive -maxdepth 4 -type d -name "*.app" | head -n 1)
+          test -n "$app"
+          echo "app bundle: $app"
+          rm -rf Payload && mkdir Payload
+          cp -R "$app" Payload/
+          zip -qry "rustdesk-${{ env.VERSION }}-ios-arm64-unsigned.ipa" Payload
+          rm -rf Payload
+          unzip -l "rustdesk-${{ env.VERSION }}-ios-arm64-unsigned.ipa" | head -n 15
+          ls -l rustdesk-${{ env.VERSION }}-ios-arm64-unsigned.ipa
 
       - name: Upload ipa
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: rustdesk-custom-ios-unsigned-ipa
-          path: flutter/build/ios/ipa/*.ipa
+          name: rustdesk-custom-ios-arm64-unsigned-ipa
+          path: rustdesk-${{ env.VERSION }}-ios-arm64-unsigned.ipa
           if-no-files-found: error
