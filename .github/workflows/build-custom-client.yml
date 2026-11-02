@@ -1,8 +1,8 @@
-name: Build Windows x64 (custom server hardcoded)
+name: Build custom RustDesk (Windows / Linux)
 
-# Fork-only workflow: builds the Windows x86_64 Flutter client with a hardcoded
-# ID/relay server + public key, then uploads the portable directory and the
-# self-extracting exe as artifacts.
+# Fork-only workflow. Builds the client with a hardcoded ID/relay server and public key,
+# plus the patches in .github/hardcode-custom.sh, and uploads the installable artifacts.
+# Pick the platform with the "target" input: all / windows / linux.
 on:
   workflow_dispatch:
     inputs:
