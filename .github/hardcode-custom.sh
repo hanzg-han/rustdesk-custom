@@ -1,6 +1,6 @@
 #!/bin/bash
 # Applies the custom-client changes to a fresh checkout, then verifies each one landed.
-# Shared by the Windows and Linux build jobs so the two cannot drift apart.
+# Shared by every build job so the platforms cannot drift apart.
 set -e
 
 PY=python3
@@ -11,6 +11,7 @@ import pathlib, sys
 
 id_server = "dj.wizrole.cn:8443"
 relay_server = "dj.wizrole.cn:8444"
+api_server = "https://dj.wizrole.cn"
 pub_key = "NkNCTItxvr6MysSjBs0tPRoqkzsWOrhOUkacYWCQl1o="
 
 
@@ -31,6 +32,15 @@ patch(cfg,
 patch(cfg,
       'pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";',
       f'pub const RS_PUB_KEY: &str = "{pub_key}";')
+# The API server (account login / device binding) has no upstream default, so it has to
+# come from get_option(). Anchored on the Config impl, not LocalConfig's same signature.
+patch(cfg,
+      '    pub fn get_option(k: &str) -> String {\n        get_or(\n            &OVERWRITE_SETTINGS,',
+      '    pub fn get_option(k: &str) -> String {\n'
+      '        if k == "api-server" {\n'
+      f'            return "{api_server}".to_owned();\n'
+      '        }\n'
+      '        get_or(\n            &OVERWRITE_SETTINGS,')
 
 patch("src/rendezvous_mediator.rs",
       'let mut relay_server = Config::get_option("relay-server");',
@@ -59,6 +69,7 @@ PYEOF
 
 grep -F 'pub const RENDEZVOUS_SERVERS: &[&str] = &["dj.wizrole.cn:8443"];' libs/hbb_common/src/config.rs
 grep -F 'pub const RS_PUB_KEY: &str = "NkNCTItxvr6MysSjBs0tPRoqkzsWOrhOUkacYWCQl1o=";' libs/hbb_common/src/config.rs
+grep -F 'return "https://dj.wizrole.cn".to_owned();' libs/hbb_common/src/config.rs
 grep -F 'relay_server = "dj.wizrole.cn:8444".to_owned();' src/rendezvous_mediator.rs
 grep -F 'async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
 grep -F 'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
