@@ -65,6 +65,14 @@ patch("src/common.rs",
 patch("src/lang/cn.rs",
       '("About RustDesk", "关于 RustDesk"),',
       '("About RustDesk", "关于 RustDesk 维思陆定制版"),')
+
+# Branding: the launcher label and app_name on Android.
+patch("flutter/android/app/src/main/AndroidManifest.xml",
+      'android:label="RustDesk"',
+      'android:label="RustDesk 维思陆定制版"')
+patch("flutter/android/app/src/main/res/values/strings.xml",
+      '<string name="app_name">RustDesk</string>',
+      '<string name="app_name">RustDesk 维思陆定制版</string>')
 PYEOF
 
 grep -F 'pub const RENDEZVOUS_SERVERS: &[&str] = &["dj.wizrole.cn:8443"];' libs/hbb_common/src/config.rs
@@ -73,5 +81,6 @@ grep -F 'return "https://dj.wizrole.cn".to_owned();' libs/hbb_common/src/config.
 grep -F 'relay_server = "dj.wizrole.cn:8444".to_owned();' src/rendezvous_mediator.rs
 grep -F 'async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
 grep -F 'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
+grep -F 'android:label="RustDesk 维思陆定制版"' flutter/android/app/src/main/AndroidManifest.xml
 grep -F '("About RustDesk", "关于 RustDesk 维思陆定制版"),' src/lang/cn.rs
 echo "custom client patches verified"
