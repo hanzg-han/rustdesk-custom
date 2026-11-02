@@ -5,11 +5,12 @@ name: Build Windows x64 (custom server hardcoded)
 # self-extracting exe as artifacts.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - ".github/workflows/build-windows-custom.yml"
+    inputs:
+      target:
+        description: "What to build"
+        type: choice
+        default: all
+        options: [all, windows, linux]
 
 env:
   SCITER_RUST_VERSION: "1.75"
@@ -24,6 +25,7 @@ jobs:
     uses: ./.github/workflows/bridge.yml
 
   build-RustDeskTempTopMostWindow:
+    if: ${{ inputs.target == '' || inputs.target == 'all' || inputs.target == 'windows' }}
     uses: ./.github/workflows/third-party-RustDeskTempTopMostWindow.yml
     with:
       upload-artifact: true
@@ -35,6 +37,7 @@ jobs:
   build-windows-x86_64:
     name: x86_64-pc-windows-msvc
     needs: [generate-bridge, build-RustDeskTempTopMostWindow]
+    if: ${{ inputs.target == '' || inputs.target == 'all' || inputs.target == 'windows' }}
     runs-on: windows-2022
     steps:
       - name: Export GitHub Actions cache environment variables
@@ -49,65 +52,9 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Hardcode ID server, relay server and public key
+      - name: Apply custom server config and branding
         shell: bash
-        run: |
-          python3 - <<'PY'
-          import pathlib, sys
-
-          id_server = "dj.wizrole.cn:8443"
-          relay_server = "dj.wizrole.cn:8444"
-          pub_key = "NkNCTItxvr6MysSjBs0tPRoqkzsWOrhOUkacYWCQl1o="
-
-          def patch(path, old, new):
-              p = pathlib.Path(path)
-              s = p.read_text(encoding="utf-8")
-              n = s.count(old)
-              if n != 1:
-                  sys.exit(f"FAILED: expected exactly 1 match in {path}, found {n}: {old!r}")
-              p.write_text(s.replace(old, new), encoding="utf-8")
-              print(f"patched {path}")
-
-          cfg = "libs/hbb_common/src/config.rs"
-          patch(cfg,
-                'pub const RENDEZVOUS_SERVERS: &[&str] = &["rs-ny.rustdesk.com"];',
-                f'pub const RENDEZVOUS_SERVERS: &[&str] = &["{id_server}"];')
-          patch(cfg,
-                'pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";',
-                f'pub const RS_PUB_KEY: &str = "{pub_key}";')
-          patch("src/rendezvous_mediator.rs",
-                'let mut relay_server = Config::get_option("relay-server");',
-                'let mut relay_server = Config::get_option("relay-server");\n'
-                '        if relay_server.is_empty() {\n'
-                f'            relay_server = "{relay_server}".to_owned();\n'
-                '        }')
-          # lejianwen/rustdesk-api#92: hbbs never answers the key exchange, so every
-          # connection waits READ_TIMEOUT (18s) and secure_tcp_required fails outright.
-          # Short-circuit both to keep the API account login usable.
-          patch("src/common.rs",
-                'async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> ResultType<()> {',
-                'async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> ResultType<()> {\n'
-                '    return Ok(());')
-          patch("src/common.rs",
-                'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {',
-                'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {\n'
-                '    return Ok(());')
-          # Branding: the About page title in the Chinese UI.
-          patch("src/lang/cn.rs",
-                '("About RustDesk", "关于 RustDesk"),',
-                '("About RustDesk", "关于 RustDesk 维思陆定制版"),')
-          PY
-
-      - name: Verify hardcoded settings
-        shell: bash
-        run: |
-          set -e
-          grep -F 'pub const RENDEZVOUS_SERVERS: &[&str] = &["dj.wizrole.cn:8443"];' libs/hbb_common/src/config.rs
-          grep -F 'pub const RS_PUB_KEY: &str = "NkNCTItxvr6MysSjBs0tPRoqkzsWOrhOUkacYWCQl1o=";' libs/hbb_common/src/config.rs
-          grep -F 'relay_server = "dj.wizrole.cn:8444".to_owned();' src/rendezvous_mediator.rs
-          grep -F 'async fn secure_tcp_impl(conn: &mut Stream, key: &str, log_on_success: bool) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
-          grep -F '("About RustDesk", "关于 RustDesk 维思陆定制版"),' src/lang/cn.rs
-          grep -F 'pub async fn secure_tcp_required(conn: &mut Stream, key: &str) -> ResultType<()> {' -A1 src/common.rs | grep -F 'return Ok(());'
+        run: bash .github/hardcode-custom.sh
 
       - name: Restore bridge files
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -245,4 +192,203 @@ jobs:
         with:
           name: rustdesk-custom-windows-x86_64-exe
           path: ./SignOutput/rustdesk-${{ env.VERSION }}-x86_64.exe
+          if-no-files-found: error
+
+  build-linux-x86_64:
+    name: x86_64-unknown-linux-gnu
+    needs: [generate-bridge]
+    if: ${{ inputs.target == '' || inputs.target == 'all' || inputs.target == 'linux' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Maximize build space
+        run: |
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo apt-get update -y
+          sudo apt-get install -y nasm
+
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@49819abfb41bd9b44fb781159c033dba90353a7c # v1.0
+        with:
+          swap-size-gb: 12
+
+      - name: Apply custom server config and branding
+        shell: bash
+        run: bash .github/hardcode-custom.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: ${{ env.SCITER_RUST_VERSION }}
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Save Rust toolchain version
+        run: |
+          RUST_TOOLCHAIN_VERSION=$(cargo --version | awk '{print $2}')
+          echo "RUST_TOOLCHAIN_VERSION=$RUST_TOOLCHAIN_VERSION" >> $GITHUB_ENV
+
+      - name: Disable rust bridge build
+        # only build cdylib
+        run: sed -i  "s/\[\"cdylib\", \"staticlib\", \"rlib\"\]/\[\"cdylib\"\]/g" Cargo.toml
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Setup vcpkg with Github Actions binary cache
+        uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
+        with:
+          vcpkgDirectory: /opt/artifacts/vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        shell: bash
+        run: |
+          sudo apt install -y libva-dev && apt show libva-dev
+          if ! $VCPKG_ROOT/vcpkg \
+            install \
+            --triplet x64-linux \
+            --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+              echo ""
+            done
+            exit 1
+          fi
+
+      - uses: rustdesk-org/run-on-arch-action@d3fcfbb632b84cf7f6bc772bfaaa2c2f4f8789a8 # no release tag; commit 2026-05-26
+        name: Build rustdesk
+        id: vcpkg
+        with:
+          arch: x86_64
+          distro: ubuntu18.04
+          githubToken: ${{ github.token }}
+          setup: |
+            ls -l "${PWD}"
+            ls -l /opt/artifacts/vcpkg/installed
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"
+            --volume "/opt/artifacts:/opt/artifacts"
+          shell: /bin/bash
+          install: |
+            apt-get update -y
+            echo -e "installing deps"
+            apt-get install -y \
+               build-essential \
+               clang \
+               cmake \
+               curl \
+               gcc \
+               git \
+               g++ \
+               libayatana-appindicator3-dev \
+               libasound2-dev \
+               libclang-10-dev \
+               libgstreamer1.0-dev \
+               libgstreamer-plugins-base1.0-dev \
+               libgtk-3-dev \
+               libpulse-dev \
+               libva-dev \
+               libxcb-randr0-dev \
+               libxcb-shape0-dev \
+               libxcb-xfixes0-dev \
+               libxdo-dev \
+               libxfixes-dev \
+               llvm-10-dev \
+               nasm \
+               ninja-build \
+               pkg-config \
+               tree \
+               python3 \
+               rpm \
+               unzip \
+               wget \
+               xz-utils \
+               libssl-dev
+            # we have libopus compiled by us.
+            apt-get remove -y libopus-dev || true
+            tree -L 3 /opt/artifacts/vcpkg/installed
+          run: |
+            git config --global --add safe.directory "*"
+            # rust, from the release tarball because rustup overflows memory in qemu
+            pushd /opt
+            wget -O rust.tar.gz https://static.rust-lang.org/dist/rust-${{ env.RUST_TOOLCHAIN_VERSION }}-x86_64-unknown-linux-gnu.tar.gz
+            tar -zxvf rust.tar.gz > /dev/null && rm rust.tar.gz
+            cd rust-${{ env.RUST_TOOLCHAIN_VERSION }}-x86_64-unknown-linux-gnu && ./install.sh
+            rm -rf rust-${{ env.RUST_TOOLCHAIN_VERSION }}-x86_64-unknown-linux-gnu
+            mkdir -p ~/.cargo/
+            echo """
+              [source.crates-io]
+              registry = 'https://github.com/rust-lang/crates.io-index'
+            """ > ~/.cargo/config
+            cat ~/.cargo/config
+
+            pushd /workspace
+            export VCPKG_ROOT=/opt/artifacts/vcpkg
+            cargo build --locked --lib --features hwcodec,flutter,unix-file-copy-paste --release
+            rm -rf target/release/deps target/release/build
+            rm -rf ~/.cargo
+            popd
+
+            # flutter
+            git config --global --add safe.directory "*"
+            pushd /opt
+            wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${{ env.FLUTTER_VERSION }}-stable.tar.xz
+            tar xf flutter_linux_${{ env.FLUTTER_VERSION }}-stable.tar.xz
+            export PATH=/opt/flutter/bin:$PATH
+            flutter doctor -v
+            pushd /opt/flutter
+            git apply /workspace/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+            popd
+            popd
+
+            pushd /workspace
+            export CARGO_INCREMENTAL=0
+            export DEB_ARCH=amd64
+            python3 ./build.py --flutter --skip-cargo
+            for name in rustdesk*??.deb; do
+              mv "$name" "${name%%.deb}-x86_64.deb"
+            done
+            ls -l rustdesk*.deb
+
+      - name: Package portable tarball
+        shell: bash
+        run: |
+          set -e
+          ls -l rustdesk*.deb
+          tar -czf rustdesk-${{ env.VERSION }}-x86_64-linux-portable.tar.gz \
+            -C flutter/build/linux/x64/release bundle
+          ls -l rustdesk-${{ env.VERSION }}-x86_64-linux-portable.tar.gz
+
+      - name: Upload deb
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rustdesk-custom-linux-x86_64-deb
+          path: rustdesk-*.deb
+          if-no-files-found: error
+
+      - name: Upload portable tarball
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rustdesk-custom-linux-x86_64-portable
+          path: rustdesk-${{ env.VERSION }}-x86_64-linux-portable.tar.gz
           if-no-files-found: error
